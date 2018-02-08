@@ -66,6 +66,7 @@ type PodSandboxCheckpoint struct {
 	Data *CheckpointData `json:"data,omitempty"`
 	// Checksum is calculated with fnv hash of the checkpoint object with checksum field set to be zero
 	CheckSum uint64 `json:"checksum"`
+	PodIP    string `json:"pod_ip"`
 }
 
 // CheckpointHandler provides the interface to manage PodSandbox checkpoint

@@ -113,10 +113,6 @@ func (ds *dockerService) RunPodSandbox(config *runtimeapi.PodSandboxConfig) (id 
 		}
 	}(&err)
 
-	// Step 3: Create Sandbox Checkpoint.
-	if err = ds.checkpointHandler.CreateCheckpoint(createResp.ID, constructPodSandboxCheckpoint(config)); err != nil {
-		return createResp.ID, err
-	}
 
 	// Step 4: Start the sandbox container.
 	// Assume kubelet's garbage collector would remove the sandbox later, if
@@ -156,13 +152,27 @@ func (ds *dockerService) RunPodSandbox(config *runtimeapi.PodSandboxConfig) (id 
 	// on the host as well, to satisfy parts of the pod spec that aren't
 	// recognized by the CNI standard yet.
 	cID := kubecontainer.BuildContainerID(runtimeName, createResp.ID)
-	err = ds.network.SetUpPod(config.GetMetadata().Namespace, config.GetMetadata().Name, cID, config.Annotations)
+	sandboxIP, err := ds.network.SetUpPod(config.GetMetadata().Namespace, config.GetMetadata().Name, cID, config.Annotations)
 	if err != nil {
 		// TODO(random-liu): Do we need to teardown network here?
-		if err := ds.client.StopContainer(createResp.ID, defaultSandboxGracePeriod); err != nil {
-			glog.Warningf("Failed to stop sandbox container %q for pod %q: %v", createResp.ID, config.Metadata.Name, err)
-		}
+		glog.Warningf("Set network for %s failed.", config.Metadata.Name)
 	}
+
+	psCheckpoint := constructPodSandboxCheckpoint(config)
+	networkStatus, err := ds.network.GetPodNetworkStatus(config.GetMetadata().Namespace, config.GetMetadata().Name, cID)
+	if err != nil {
+		return "", err
+	}
+	if networkStatus == nil {
+		msg := fmt.Sprintf("Couldn't find network status for %s/%s through plugin", config.GetMetadata().Namespace, config.GetMetadata().Name)
+		return "", fmt.Errorf("%v: invalid network status for", msg)
+	}
+	psCheckpoint.PodIP = sandboxIP
+	// Step 3: Create Sandbox Checkpoint.
+	if err = ds.checkpointHandler.CreateCheckpoint(createResp.ID, psCheckpoint); err != nil {
+		return createResp.ID, err
+	}
+
 	return createResp.ID, err
 }
 
@@ -317,9 +327,9 @@ func (ds *dockerService) getIP(podSandboxID string, sandbox *dockertypes.Contain
 		return ""
 	}
 
-	ip, err := ds.getIPFromPlugin(sandbox)
+	psCheckpoint,err := ds.checkpointHandler.GetCheckpoint(podSandboxID)
 	if err == nil {
-		return ip
+		return psCheckpoint.PodIP
 	}
 
 	// TODO: trusting the docker ip is not a great idea. However docker uses

@@ -400,7 +400,7 @@ func (plugin *kubenetNetworkPlugin) setup(namespace string, name string, id kube
 	return nil
 }
 
-func (plugin *kubenetNetworkPlugin) SetUpPod(namespace string, name string, id kubecontainer.ContainerID, annotations map[string]string) error {
+func (plugin *kubenetNetworkPlugin) SetUpPod(namespace string, name string, id kubecontainer.ContainerID, annotations map[string]string) (string, error) {
 	plugin.mu.Lock()
 	defer plugin.mu.Unlock()
 
@@ -412,11 +412,11 @@ func (plugin *kubenetNetworkPlugin) SetUpPod(namespace string, name string, id k
 	// TODO: Entire pod object only required for bw shaping and hostport.
 	pod, ok := plugin.host.GetPodByName(namespace, name)
 	if !ok {
-		return fmt.Errorf("pod %q cannot be found", name)
+		return "", fmt.Errorf("pod %q cannot be found", name)
 	}
 
 	if err := plugin.Status(); err != nil {
-		return fmt.Errorf("Kubenet cannot SetUpPod: %v", err)
+		return "", fmt.Errorf("Kubenet cannot SetUpPod: %v", err)
 	}
 
 	if err := plugin.setup(namespace, name, id, pod, annotations); err != nil {
@@ -441,7 +441,7 @@ func (plugin *kubenetNetworkPlugin) SetUpPod(namespace string, name string, id k
 			// when it does, there will be ips.
 			plugin.ipamGarbageCollection()
 		}
-		return err
+		return "", err
 	}
 
 	// Need to SNAT outbound traffic from cluster
@@ -449,7 +449,7 @@ func (plugin *kubenetNetworkPlugin) SetUpPod(namespace string, name string, id k
 		glog.Errorf("Failed to ensure MASQ rule: %v", err)
 	}
 
-	return nil
+	return plugin.podIPs[id], nil
 }
 
 // Tears down as much of a pod's network as it can even if errors occur.  Returns

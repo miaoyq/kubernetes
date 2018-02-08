@@ -1353,7 +1353,7 @@ func (r *Runtime) setupPodNetwork(pod *v1.Pod) (kubecontainer.ContainerID, strin
 	}
 
 	// Set up networking with the network plugin
-	err = r.network.SetUpPod(pod.Namespace, pod.Name, networkNamespace, pod.Annotations)
+	_, err = r.network.SetUpPod(pod.Namespace, pod.Name, networkNamespace, pod.Annotations)
 	if err != nil {
 		return networkNamespace, "", err
 	}
